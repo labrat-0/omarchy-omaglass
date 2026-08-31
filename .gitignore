@@ -1,0 +1,10 @@
+*.log
+*.mp4
+scratch/
+
+# Screenshots taken while testing should not land in the repo by accident,
+# but the deliberate assets must: the README references both, and a blanket
+# ignore silently shipped it with broken images.
+*.png
+!preview.png
+!assets/*.png

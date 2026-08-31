@@ -1,0 +1,64 @@
+#!/bin/bash
+# Open the AirPlay ports UxPlay needs, scoped to the local subnet.
+#
+#   sudo ./bin/omaglass-firewall            # show what would change
+#   sudo ./bin/omaglass-firewall --apply    # add the rules
+#   sudo ./bin/omaglass-firewall --remove   # take them back out
+#
+# Rules are restricted to the LAN, never 0.0.0.0/0: an AirPlay receiver
+# accepts screen data from anyone who can reach it, so this should not be
+# exposed beyond the network the phone is on.
+#
+# These are the fixed "legacy" ports uxplay uses with -p. Without -p it picks
+# ports dynamically, which cannot be firewalled sensibly — that is why the
+# test script passes -p.
+
+set -uo pipefail
+
+SUBNET="${SUBNET:-$(ip route | awk '/default/ {print $3}' | sed 's/\.[0-9]*$/.0\/24/')}"
+TCP_PORTS=(7000 7001 7100)
+UDP_PORTS=(6000 6001 7011)
+COMMENT="uxplay airplay"
+
+[[ -n "$SUBNET" ]] || { echo "could not determine subnet; set SUBNET=x.x.x.0/24" >&2; exit 1; }
+
+mode="${1:-show}"
+
+if [[ "$mode" != "show" && $EUID -ne 0 ]]; then
+  echo "needs root: sudo $0 $mode" >&2
+  exit 1
+fi
+
+echo "Subnet: $SUBNET"
+echo
+
+for p in "${TCP_PORTS[@]}"; do
+  case "$mode" in
+    show)   echo "  ufw allow from $SUBNET to any port $p proto tcp" ;;
+    --apply)  ufw allow from "$SUBNET" to any port "$p" proto tcp comment "$COMMENT" ;;
+    --remove) ufw delete allow from "$SUBNET" to any port "$p" proto tcp ;;
+  esac
+done
+
+for p in "${UDP_PORTS[@]}"; do
+  case "$mode" in
+    show)   echo "  ufw allow from $SUBNET to any port $p proto udp" ;;
+    --apply)  ufw allow from "$SUBNET" to any port "$p" proto udp comment "$COMMENT" ;;
+    --remove) ufw delete allow from "$SUBNET" to any port "$p" proto udp ;;
+  esac
+done
+
+case "$mode" in
+  show)
+    echo
+    echo "Nothing changed. Re-run with --apply to add these, --remove to undo."
+    ;;
+  --apply|--remove)
+    echo
+    ufw status | grep -iE "7000|7001|7100|6000|6001|7011|Status" || true
+    ;;
+  *)
+    echo "usage: $0 [--apply|--remove]" >&2
+    exit 2
+    ;;
+esac

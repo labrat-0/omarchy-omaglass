@@ -1,0 +1,201 @@
+#!/bin/bash
+# Preflight for phone mirroring: check every failure mode that has actually
+# bitten us, plus the security defaults worth knowing about.
+#
+#   ./bin/doctor          human-readable report
+#   ./bin/doctor --quiet  only problems
+#
+# Exit status: 0 all clear (warnings allowed), 1 at least one FAIL.
+#
+# Every check here exists because the corresponding failure was SILENT the
+# first time. A missing H.264 decoder gives a connected phone and a black
+# nothing; a firewall block gives a receiver the phone can see but not reach.
+# The point of this script is that none of those stay silent twice.
+
+set -uo pipefail
+
+QUIET=0
+[[ "${1:-}" == "--quiet" ]] && QUIET=1
+
+FAILED=0
+WARNED=0
+
+if [[ -t 1 ]]; then
+  R=$'\033[31m'; G=$'\033[32m'; Y=$'\033[33m'; B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
+else
+  R=""; G=""; Y=""; B=""; D=""; N=""
+fi
+
+section() { [[ $QUIET -eq 1 ]] || printf '\n%s%s%s\n' "$B" "$1" "$N"; }
+pass()    { [[ $QUIET -eq 1 ]] || printf '  %s✓%s %s\n' "$G" "$N" "$1"; }
+warn()    { WARNED=$((WARNED+1)); printf '  %s!%s %s\n' "$Y" "$N" "$1"; [[ -n "${2:-}" ]] && printf '    %s%s%s\n' "$D" "$2" "$N"; }
+fail()    { FAILED=$((FAILED+1)); printf '  %s✗%s %s\n' "$R" "$N" "$1"; [[ -n "${2:-}" ]] && printf '    %s%s%s\n' "$D" "$2" "$N"; }
+note()    { [[ $QUIET -eq 1 ]] || printf '    %s%s%s\n' "$D" "$1" "$N"; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# ─────────────────────────────────────────────────────────── tools
+
+section "Tools"
+
+have adb      && pass "adb"      || fail "adb missing"      "omarchy pkg add android-tools"
+have scrcpy   && pass "scrcpy"   || fail "scrcpy missing"   "omarchy pkg add scrcpy"
+have qrencode && pass "qrencode" || warn "qrencode missing" "needed only for QR pairing: omarchy pkg add qrencode"
+have uxplay   && pass "uxplay"   || warn "uxplay missing"   "needed only for iPhone: omarchy pkg aur add uxplay"
+
+# ─────────────────────────────────────────────────────── discovery
+
+section "Discovery (mDNS)"
+
+if systemctl is-active --quiet avahi-daemon; then
+  pass "avahi-daemon running"
+else
+  fail "avahi-daemon not running" \
+       "Android port discovery and AirPlay both depend on it: sudo systemctl enable --now avahi-daemon"
+fi
+
+have avahi-browse && pass "avahi-browse" \
+  || fail "avahi-browse missing" "omarchy pkg add avahi"
+
+# adb's own mDNS is compiled out of Arch's android-tools; avahi covers it.
+# Informational, not a problem — but worth stating so nobody chases it.
+#
+# Capture before matching: `adb mdns check` exits non-zero when unsupported,
+# and under pipefail that sinks the whole pipeline regardless of what grep
+# found, so the piped form silently never fires.
+if have adb; then
+  mdns_out="$(adb mdns check 2>&1 || true)"
+  if grep -qi "not supported" <<<"$mdns_out"; then
+    note "adb's built-in mDNS is unavailable in this build; avahi is used instead"
+  fi
+fi
+
+# ───────────────────────────────────────────────────────── android
+
+section "Android"
+
+if have avahi-browse && systemctl is-active --quiet avahi-daemon; then
+  found="$(timeout 6 avahi-browse -tpr _adb-tls-connect._tcp 2>/dev/null \
+           | grep '^=;.*;IPv4;' | head -1 | cut -d';' -f8-)"
+  if [[ -n "$found" ]]; then
+    addr="$(cut -d';' -f1 <<<"$found"):$(cut -d';' -f2 <<<"$found")"
+    name="$(grep -o 'name=[^"]*' <<<"$found" | cut -d= -f2)"
+    pass "device advertising: ${name:-unknown} at $addr"
+
+    if adb devices 2>/dev/null | awk -v t="$addr" '$1==t && $2=="device"{f=1} END{exit !f}'; then
+      pass "adb connected and authorised"
+    else
+      warn "advertising but not connected" "adb connect $addr"
+    fi
+  else
+    warn "no Android device advertising" \
+         "enable Wireless debugging on the phone, and check it is on this network"
+  fi
+fi
+
+# ────────────────────────────────────────────────────────── iphone
+
+section "iPhone (AirPlay)"
+
+decoder=""
+for e in vah264dec vaapih264dec avdec_h264 openh264dec; do
+  if gst-inspect-1.0 "$e" >/dev/null 2>&1; then decoder="$e"; break; fi
+done
+
+if [[ -z "$decoder" ]]; then
+  fail "no H.264 decoder" \
+       "AirPlay would connect and display nothing: omarchy pkg add gst-libav gst-plugin-va"
+elif [[ "$decoder" == va* ]]; then
+  pass "H.264 decode: $decoder (hardware)"
+else
+  pass "H.264 decode: $decoder (software)"
+  note "hardware decode unavailable; on Intel try intel-media-driver"
+  note "matters mainly when recording, where software decode competes for CPU"
+fi
+
+sink=""
+for s in waylandsink gtkwaylandsink glimagesink xvimagesink; do
+  if gst-inspect-1.0 "$s" >/dev/null 2>&1; then sink="$s"; break; fi
+done
+[[ -n "$sink" ]] && pass "video sink: $sink" \
+  || fail "no usable video sink" "omarchy pkg add gst-plugins-good gst-plugins-bad"
+
+# ──────────────────────────────────────────────────────── firewall
+
+section "Firewall"
+
+if ! systemctl is-active --quiet ufw; then
+  pass "ufw inactive — nothing to block AirPlay"
+else
+  gw="$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')"
+  subnet="${gw%.*}.0/24"
+  rules="/etc/ufw/user.rules"
+
+  if [[ ! -r "$rules" ]]; then
+    warn "cannot read $rules" "re-run as root for a full firewall check"
+  else
+    missing=()
+    wrong_subnet=0
+    for spec in "tcp 7000" "tcp 7001" "tcp 7100" "udp 6000" "udp 6001" "udp 7011"; do
+      proto="${spec% *}"; port="${spec#* }"
+      line="$(grep -E -- "-p $proto --dport $port .*-j ACCEPT" "$rules" | head -1)"
+      if [[ -z "$line" ]]; then
+        missing+=("$proto/$port")
+      elif ! grep -q -- "-s $subnet" <<<"$line"; then
+        wrong_subnet=1
+      fi
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+      warn "AirPlay ports not open: ${missing[*]}" \
+           "the phone will list the receiver but fail to connect: sudo ./bin/omaglass-firewall --apply"
+    elif [[ $wrong_subnet -eq 1 ]]; then
+      warn "AirPlay ports open, but not for this network ($subnet)" \
+           "rules were added for a different subnet; re-run sudo ./bin/omaglass-firewall --apply"
+    else
+      pass "AirPlay ports open, scoped to $subnet"
+    fi
+  fi
+
+  policy="$(grep -oP 'DEFAULT_INPUT_POLICY="\K[^"]+' /etc/default/ufw 2>/dev/null)"
+  [[ "$policy" == "DROP" || "$policy" == "REJECT" ]] \
+    && pass "default input policy: $policy" \
+    || warn "default input policy is ${policy:-unknown}" "expected DROP"
+fi
+
+# ──────────────────────────────────────────────────────── security
+
+section "Security"
+
+# UxPlay accepts any client on the network unless told otherwise. Fine on a
+# home LAN, not on conference or hotel Wi-Fi.
+if have uxplay; then
+  if pgrep -x uxplay >/dev/null; then
+    if pgrep -a uxplay | grep -qE '\-pin|\-pw|\-restrict'; then
+      pass "uxplay running with client access control"
+    else
+      warn "uxplay is running with no PIN or client restriction" \
+           "anyone on this network can mirror to your screen: restart it with -pin"
+    fi
+  else
+    note "uxplay not running; start it with -pin on untrusted networks"
+  fi
+fi
+
+# Wireless debugging is full device access, not just screen sharing.
+if have adb && adb devices 2>/dev/null | awk '$2=="device"{f=1} END{exit !f}'; then
+  warn "Android wireless debugging is active" \
+       "this grants full device access, not just screen mirroring — turn it off on untrusted networks"
+fi
+
+# ───────────────────────────────────────────────────────── summary
+
+echo
+if [[ $FAILED -gt 0 ]]; then
+  printf '%s%d failed%s, %d warning(s)\n' "$R" "$FAILED" "$N" "$WARNED"
+  exit 1
+elif [[ $WARNED -gt 0 ]]; then
+  printf '%sNo blockers%s, %d warning(s)\n' "$G" "$N" "$WARNED"
+else
+  printf '%sAll clear%s\n' "$G" "$N"
+fi

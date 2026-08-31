@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 420" width="600" height="420" role="img" aria-label="OmaGlass">
+  <defs>
+    <linearGradient id="pane" gradientUnits="userSpaceOnUse" x1="0" y1="85" x2="0" y2="335">
+      <stop offset="0%" stop-color="#ffb454"/>
+      <stop offset="100%" stop-color="#ff6f3c"/>
+    </linearGradient>
+    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="600" height="420">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g fill="none" stroke="#e8e8e8" stroke-width="9" stroke-linejoin="round">
+    <!-- laptop screen -->
+    <rect x="90" y="45" width="370" height="265"/>
+    <!-- base, narrowing toward the front edge -->
+    <path d="M68 312 L490 312 L470 344 L88 344 Z"/>
+  </g>
+
+  <!-- the laptop's pane line, cut short where the phone stands in front -->
+  <line x1="275" y1="85" x2="275" y2="280" stroke="url(#pane)" stroke-width="9"
+        stroke-linecap="round" filter="url(#glow)"/>
+
+  <!-- phone, opaque so it occludes the screen edge and the base behind it -->
+  <rect x="320" y="145" width="105" height="220" fill="#0d1117" stroke="#e8e8e8" stroke-width="9"/>
+  <line x1="372" y1="178" x2="372" y2="332" stroke="url(#pane)" stroke-width="9"
+        stroke-linecap="round" filter="url(#glow)"/>
+</svg>

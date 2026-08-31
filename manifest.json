@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.labrat-0.omaglass",
+  "name": "OmaGlass",
+  "version": "1.0.0",
+  "author": "mick 'labrat' donahue",
+  "license": "MIT",
+  "description": "Phone as a live pane on the laptop \u2014 scrcpy over adb for Android, an AirPlay receiver for iPhone.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "OmaGlass",
+    "description": "Mirror Android or iPhone into a window you can share or record.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "airplayName": "Omarchy",
+      "airplayPin": "",
+      "deviceIp": "",
+      "devicePort": "",
+      "refreshIntervalSec": 8,
+      "streamUrl": "",
+      "streamPort": "8080"
+    },
+    "schema": [
+      {
+        "key": "airplayName",
+        "type": "string",
+        "label": "AirPlay receiver name",
+        "defaultValue": "Omarchy"
+      },
+      {
+        "key": "airplayPin",
+        "type": "string",
+        "label": "AirPlay PIN (4 digits, blank = open to the network)",
+        "defaultValue": ""
+      },
+      {
+        "key": "streamUrl",
+        "type": "string",
+        "label": "Stream URL (optional \u2014 Find phone fills this in)",
+        "defaultValue": ""
+      },
+      {
+        "key": "streamPort",
+        "type": "string",
+        "label": "Stream port to search (ScreenStream default 8080)",
+        "defaultValue": "8080"
+      },
+      {
+        "key": "deviceIp",
+        "type": "string",
+        "label": "Android fallback IP (optional)",
+        "defaultValue": ""
+      },
+      {
+        "key": "devicePort",
+        "type": "string",
+        "label": "Android fallback port (optional)",
+        "defaultValue": ""
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Status refresh (seconds)",
+        "min": 3,
+        "max": 120,
+        "step": 1,
+        "defaultValue": 8
+      }
+    ]
+  }
+}
