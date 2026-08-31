@@ -55,43 +55,96 @@ Android column and an Apple column.
 omarchy plugin add https://github.com/labrat-0/omarchy-omaglass --enable
 ```
 
-## Android without developer options
+## Three ways to get a phone on screen
+
+Pick one. Each is a one-time setup; afterwards it is two clicks.
+
+---
+
+### 1 · Android, no developer options
+
+> **Nothing to enable. Nothing to pair. Nothing typed.**
+> View only — no touch control, and the phone's lock screen stays black.
 
 <table>
 <tr>
-<td width="220" align="center">
-<img src="assets/screenstream-playstore-qr.png" width="180" alt="Play Store QR for ScreenStream"><br>
+<td width="200" align="center">
+<img src="assets/screenstream-playstore-qr.png" width="160" alt="Play Store QR for ScreenStream"><br>
 <sub><b>Scan with the phone's camera</b></sub>
 </td>
 <td>
 
-**No developer options. No pairing. Nothing typed.**
-
+**On the phone**
 1. Install **ScreenStream** — scan the code, or
    [Play Store](https://play.google.com/store/apps/details?id=info.dvkr.screenstream)
    · [F-Droid](https://f-droid.org/packages/info.dvkr.screenstream/) (ad-free)
 2. Open it and start **Local mode**
-3. In OmaGlass: **Find phone** — a /24 sweep, about two seconds
-4. **Stream**
 
-The same QR is built into the widget, under **Get the app**, so a new user never
-has to leave the panel to find it.
+**In OmaGlass**
+
+3. **Find phone** — sweeps the network, about two seconds
+4. **Stream**
 
 </td>
 </tr>
 </table>
 
-Unlike the adb pairing payload, this QR is only a URL — the phone's ordinary
-camera is the right thing to scan it with.
+The same QR is inside the widget under **Get the app**, so a new user never has
+to leave the panel. This QR is only a URL, so the ordinary camera is the right
+thing to scan it with.
 
-**What you get:** a live window you can share or record, carrying audio.
-**What you don't:** touch control, and the phone's lock screen renders black.
-Both are MediaProjection restrictions, not gaps in this plugin. For control,
-use the scrcpy path, which needs developer options.
+---
 
-The F-Droid build supports Local (MJPEG) and RTSP modes and has no ads; the
-Play build adds WebRTC and carries ads. Either works — **Find phone** detects
-MJPEG, and an `rtsp://` URL can be set by hand in the widget's settings.
+### 2 · Android with wireless debugging
+
+> **Full touch and keyboard control**, and the sharpest picture.
+> Requires developer options — see [why](#does-android-need-debugging-just-to-look).
+
+**On the phone**
+
+1. **Settings → About phone → Software information**
+2. Tap **Build number** seven times to unlock developer options
+3. **Settings → Developer options → Wireless debugging → ON**
+
+That is the whole setup. **No pairing code, no IP address, no port.** OmaGlass
+finds the phone over mDNS and follows the port Android rotates on every toggle.
+
+**In OmaGlass** — the Android column fills in on its own:
+
+<p align="center">
+<img src="assets/android-connected-menu.png" width="420" alt="The Android column showing Mirror, Floating, Screen off and Disconnect once a device is connected">
+</p>
+
+| | |
+|---|---|
+| **Mirror** | normal resizable window |
+| **Floating** | small window, always on top |
+| **Screen off** | mirrors while the phone's own display sleeps |
+| **Disconnect** | drops adb, ending mirroring and control |
+
+---
+
+### 3 · iPhone
+
+> **Nothing to install or enable on the phone.**
+> View only — AirPlay carries no input channel.
+
+1. In OmaGlass, press **Receiver** under **Apple**
+2. On the iPhone: **Control Centre → Screen Mirroring → Omarchy**
+
+If the receiver appears on the phone but will not connect, the firewall is
+blocking the AirPlay ports:
+
+```bash
+sudo ./bin/omaglass-firewall --apply   # run with no args to preview first
+```
+
+> [!WARNING]
+> The receiver accepts **any** device on the network unless a PIN is set. Fine
+> at home, not on conference or hotel Wi-Fi. Set **AirPlay PIN** in the widget's
+> settings; the panel warns in red while running without one.
+
+---
 
 ### Does Android need debugging just to look?
 
@@ -377,14 +430,19 @@ design. The achievable target is that nothing fails *silently*, which is what
 ## Setup
 
 ```bash
-omarchy pkg add gst-libav gst-plugin-va
-omarchy pkg aur add uxplay
-sudo ./bin/omaglass-firewall --apply    # run with no args to preview first
+omarchy plugin add https://github.com/labrat-0/omarchy-omaglass --enable
 ```
 
-`gst-plugins-good` arrives as a dependency and supplies `autovideosink`.
-Hardware H.264 decode is *not* active — `vah264dec` is absent despite
-`gst-plugin-va`; Arrow Lake likely wants `intel-media-driver`. Software
-`avdec_h264` is adequate for a phone-sized stream, so this is an optimisation
-to revisit only if recording shows CPU contention.
+Everything else is already on an Omarchy system except the H.264 decoder the
+AirPlay path needs:
 
+```bash
+omarchy pkg add gst-libav gst-plugin-va
+omarchy pkg aur add uxplay
+sudo ./bin/omaglass-firewall --apply
+```
+
+Hardware decode is not active out of the box — `vah264dec` is absent despite
+`gst-plugin-va`; Intel graphics want `intel-media-driver`. Software decode is
+fine for a phone-sized stream, so this only matters if recording shows CPU
+contention.
