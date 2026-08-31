@@ -442,6 +442,25 @@ omarchy pkg aur add uxplay
 sudo ./bin/omaglass-firewall --apply
 ```
 
+### Removing
+
+```bash
+sudo ./bin/omaglass-firewall --remove    # do this first — see below
+omarchy plugin remove io.github.labrat-0.omaglass
+```
+
+`omarchy plugin remove` takes the widget off the bar and deletes the plugin
+directory. Undo the firewall rules **before** that, because the script that
+removes them lives inside the directory being deleted.
+
+OmaGlass stores no state of its own and never writes to your configuration, so
+nothing else is left behind. The packages are shared with the rest of the
+system, so drop them only if nothing else wants them:
+
+```bash
+omarchy pkg drop uxplay gst-libav gst-plugin-va
+```
+
 Hardware decode is not active out of the box — `vah264dec` is absent despite
 `gst-plugin-va`; Intel graphics want `intel-media-driver`. Software decode is
 fine for a phone-sized stream, so this only matters if recording shows CPU
