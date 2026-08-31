@@ -306,7 +306,13 @@ Panel {
     var cmd = "uxplay -n " + shellQuote(airplayName) + " -vs waylandsink -avdec -p"
     if (airplayPin !== "") cmd += " -pin " + shellQuote(airplayPin)
     actionStatus = "Starting receiver…"
-    runDetached("pkill -x uxplay >/dev/null 2>&1; exec " + cmd + " >/tmp/uxplay-widget.log 2>&1")
+    // The log goes under XDG_RUNTIME_DIR, not /tmp: a fixed path in a
+    // world-writable directory can be pre-created as a symlink by another
+    // local user, and the redirect would then truncate whatever it points at.
+    var logDir = "\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/omaglass\""
+    runDetached("d=" + logDir + "; mkdir -p -m 700 \"$d\" || exit 1; "
+                + "pkill -x uxplay >/dev/null 2>&1; "
+                + "exec " + cmd + " >\"$d/uxplay.log\" 2>&1")
     statusDelay.restart()
   }
 
