@@ -21,6 +21,7 @@
     "defaults": {
       "airplayName": "Omarchy",
       "airplayPin": "",
+      "mirrorSize": "",
       "deviceIp": "",
       "devicePort": "",
       "refreshIntervalSec": 8,
@@ -38,6 +39,12 @@
         "key": "airplayPin",
         "type": "string",
         "label": "AirPlay PIN (4 digits, blank = open to the network)",
+        "defaultValue": ""
+      },
+      {
+        "key": "mirrorSize",
+        "type": "string",
+        "label": "iPhone window size WxH (blank = uxplay default, e.g. 260x560)",
         "defaultValue": ""
       },
       {

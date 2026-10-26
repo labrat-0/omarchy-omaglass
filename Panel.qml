@@ -18,6 +18,7 @@ Panel {
 
   readonly property string airplayName: String(setting("airplayName", "Omarchy"))
   readonly property string airplayPin: String(setting("airplayPin", ""))
+  readonly property string mirrorSize: String(setting("mirrorSize", "")).trim()
   readonly property int refreshIntervalSec: Math.max(3, Number(setting("refreshIntervalSec", 8)))
 
   // Android rotates its wireless-debugging port on every toggle and reboot, so
@@ -298,12 +299,22 @@ Panel {
     statusDelay.restart()
   }
 
-  // waylandsink and avdec are pinned rather than left to uxplay's defaults:
+  // ximagesink and avdec are pinned rather than left to uxplay's defaults:
   // autovideosink + decodebin resolve to something that never produces a
   // window under Hyprland, and it fails silently — a phone that connects to
   // nothing. -p pins the ports so a firewall rule can exist at all.
+  //
+  // ximagesink rather than waylandsink: with gst-plugins-bad 1.28.6 and
+  // uxplay 1.73, waylandsink's GstWlDisplay event thread crashed uxplay in
+  // output_done() on a wl_output::done event, taking the mirror down with it.
+  // ximagesink renders through XWayland instead, which Hyprland
+  // starts by default. It is not fractional-scale aware and does not rescale
+  // when the window is resized; see mirrorSize.
   function startReceiver() {
-    var cmd = "uxplay -n " + shellQuote(airplayName) + " -vs waylandsink -avdec -p"
+    var cmd = "uxplay -n " + shellQuote(airplayName) + " -vs ximagesink -avdec -p"
+    // -s caps the size requested from the phone. Unset, AirPlay asks for
+    // 1920x1080 and the window opens as tall as a 1080p display.
+    if (/^[0-9]+x[0-9]+$/.test(mirrorSize)) cmd += " -s " + mirrorSize
     if (airplayPin !== "") cmd += " -pin " + shellQuote(airplayPin)
     actionStatus = "Starting receiver…"
     // The log goes under XDG_RUNTIME_DIR, not /tmp: a fixed path in a
@@ -433,13 +444,16 @@ Panel {
   }
 
   // uxplay only maps a window once a phone is actually streaming, so the
-  // window is what separates "waiting" from "mirroring".
+  // window is what separates "waiting" from "mirroring". Matched by pid, not
+  // class: ximagesink's window is an XWayland client whose class is always
+  // GStreamer's hardcoded "GStreamer", never "uxplay".
   Process {
     id: receiverProc
     command: ["bash", "-lc",
-      "pgrep -x uxplay >/dev/null && {"
-      + " hyprctl clients -j 2>/dev/null | grep -q '\"class\": \"uxplay\"'"
-      + " && echo streaming || echo running; } || echo off"]
+      "pid=$(pgrep -x uxplay) && [ -n \"$pid\" ] || { echo off; exit; }; "
+      + "hyprctl clients -j 2>/dev/null | jq -e --arg pid \"$pid\" "
+      + "'any(.[]; .pid == ($pid | tonumber))' >/dev/null "
+      + "&& echo streaming || echo running"]
     stdout: StdioCollector { id: receiverOut; waitForEnd: true }
     onExited: function(exitCode) {
       var s = String(receiverOut.text || "").trim()
