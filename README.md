@@ -144,6 +144,33 @@ sudo ./bin/omaglass-firewall --apply   # run with no args to preview first
 > at home, not on conference or hotel Wi-Fi. Set **AirPlay PIN** in the widget's
 > settings; the panel warns in red while running without one.
 
+**Window size and look.** The mirror is an XWayland window (`ximagesink`), so
+it does not rescale when resized. Set **iPhone window size** in the widget's
+settings (e.g. `260x560`) to control how big it opens; blank leaves uxplay's
+default, which is as tall as a 1080p display. Keep the height under your
+smallest monitor's logical height, because `ximagesink` is not
+fractional-scale aware.
+
+The window's class is `GStreamer` (the X11 sinks hardcode it), so a Hyprland
+rule can give it a phone-like frame. Example for `hyprland.lua`, with a
+translucent rounded border and fully opaque content:
+
+```lua
+o.window("GStreamer", {
+  float = true,
+  center = true,
+  size = { 260, 560 },
+  keep_aspect_ratio = true,
+  opacity = "1.0 1.0",
+  no_blur = true,
+  rounding = 20,
+  border_size = 4,
+  border_color = "rgba(000000cc) rgba(000000aa)",
+})
+```
+
+This matches any plain GStreamer window, not only OmaGlass's.
+
 ---
 
 ### Does Android need debugging just to look?
